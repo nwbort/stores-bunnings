@@ -29,13 +29,12 @@ STORE2 = "https://www.bunnings.com.au/stores/nsw/alexandria"
 OUT = Path("probe-out")
 OUT.mkdir(exist_ok=True)
 
+# Note: real Bunnings pages also load /cdn-cgi/challenge-platform/... (Cloudflare's
+# bot-detection script), so that string is NOT a sign of the interstitial.
 CHALLENGE_MARKERS = (
-    "Just a moment",
-    "challenge-platform",
-    "cf_chl_opt",
+    "<title>Just a moment...</title>",
+    "_cf_chl_opt",
     "Enable JavaScript and cookies to continue",
-    "Verifying you are human",
-    "Performing security verification",
 )
 NEXT_DATA_RE = re.compile(r'<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 UA = (
@@ -112,7 +111,7 @@ def m_curl_cffi(_variant):
     for imp in ("chrome", "chrome131", "safari", "safari_ios", "firefox", "edge"):
         for url, name, check in ((SITEMAP, "sitemap", sitemap_ok), (STORE, "store", store_ok)):
             try:
-                r = requests.get(url, impersonate=imp, timeout=30)
+                r = requests.get(url, impersonate=imp, timeout=30, proxy=PROXY)
                 record(f"{name}-{imp}", check(r.text), r.text,
                        f"HTTP {r.status_code} cf-mitigated={r.headers.get('cf-mitigated')}")
             except Exception as e:
@@ -174,6 +173,57 @@ def m_flaresolverr(variant):
             record(name, False, note=f"error {e!r}"[:200])
 
 
+def m_flaresolverr_session(variant):
+    """Solve once in a FlareSolverr session, then reuse it (and its cookies)."""
+    endpoint = "http://localhost:8191/v1"
+    for _ in range(60):
+        try:
+            urllib.request.urlopen("http://localhost:8191/", timeout=2)
+            break
+        except Exception:
+            time.sleep(2)
+
+    def call(**payload):
+        req = urllib.request.Request(endpoint, data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=180) as r:
+            return json.load(r)
+
+    call(cmd="sessions.create", session="bunnings")
+    start = time.time()
+    d = call(cmd="request.get", url=STORE, session="bunnings", maxTimeout=120000)
+    sol = d.get("solution") or {}
+    record("store", store_ok(sol.get("response")), sol.get("response"),
+           f"{time.time() - start:.0f}s msg={d.get('message')!r}")
+    start = time.time()
+    d = call(cmd="request.get", url=SITEMAP, session="bunnings", maxTimeout=120000)
+    sm = (d.get("solution") or {}).get("response") or ""
+    record("sitemap", sitemap_ok(sm), sm, f"{time.time() - start:.0f}s msg={d.get('message')!r}")
+    urls = re.findall(r"<loc>\s*(https://www\.bunnings\.com\.au/stores/[a-z]+/[^<\s]+?)\s*</loc>", sm)
+    log(f"{len(urls)} store urls in sitemap")
+    sample = (urls or [STORE2] * 10)[:10]
+    start = time.time()
+    good = 0
+    for u in sample:
+        d = call(cmd="request.get", url=u, session="bunnings", maxTimeout=60000)
+        good += store_ok((d.get("solution") or {}).get("response"))
+    record("batch10-session", good == len(sample), None,
+           f"{good}/{len(sample)} in {time.time() - start:.1f}s")
+
+    # Replay FlareSolverr's cookies + UA outside the browser.
+    cookies = {c["name"]: c["value"] for c in sol.get("cookies") or []}
+    ua = sol.get("userAgent")
+    log("cookies:", sorted(cookies), "ua:", ua)
+    from curl_cffi import requests
+    for imp in ("chrome", "chrome131"):
+        try:
+            r = requests.get(STORE2, impersonate=imp, cookies=cookies,
+                             headers={"User-Agent": ua}, timeout=30)
+            record(f"cookie-replay-{imp}", store_ok(r.text), r.text, f"HTTP {r.status_code}")
+        except Exception as e:
+            record(f"cookie-replay-{imp}", False, note=f"error {e!r}"[:200])
+
+
 # --------------------------------------------------------------------------
 # nodriver (what tribunal-tracker uses)
 # --------------------------------------------------------------------------
@@ -199,10 +249,21 @@ CHROME_ARGS = [
 ]
 
 
+# Optional upstream proxy (e.g. Cloudflare WARP's local SOCKS5 proxy).
+PROXY = os.environ.get("PROBE_PROXY") or None
+
+
 def find_chrome():
     for c in ("google-chrome", "google-chrome-stable", "chromium-browser", "chromium"):
         p = which(c)
         if p:
+            return p
+    for p in (
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ):
+        if os.path.exists(p):
             return p
     raise FileNotFoundError("no chrome")
 
@@ -320,6 +381,8 @@ async def nd_main(variant):
             "--remote-debugging-host=127.0.0.1", f"--remote-debugging-port={port}"]
     if variant == "headless":
         args.append("--headless=new")
+    if PROXY:
+        args.append(f"--proxy-server={PROXY}")
     args.append("about:blank")
     log("launching", chrome, variant)
     proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -357,20 +420,32 @@ async def nd_main(variant):
         urls = re.findall(r"<loc>\s*(https://www\.bunnings\.com\.au/stores/[a-z]+/[^<\s]+?)\s*</loc>", sm_body or "")
         if not urls:
             urls = [STORE, STORE2] * 10
-        sample = urls[:20]
+        sample = urls[:40]
         start = time.time()
         js = (
-            "(async () => { const urls = " + json.dumps(sample) + ";"
-            " const res = await Promise.all(urls.map(async u => { try {"
+            "(async () => { const urls = " + json.dumps(sample) + "; const res = []; let i = 0;"
+            " async function worker() { while (i < urls.length) { const u = urls[i++]; try {"
             "   const r = await fetch(u, {credentials: 'include'}); const t = await r.text();"
-            "   return [r.status, t.includes('__NEXT_DATA__'), t.includes('Just a moment')];"
-            " } catch (e) { return [-1, false, false]; } }));"
+            "   res.push([r.status, t.includes('__NEXT_DATA__'), t.includes('_cf_chl_opt')]);"
+            " } catch (e) { res.push([-1, false, false]); } } }"
+            " await Promise.all(Array.from({length: 8}, worker));"
             " return JSON.stringify(res); })()"
         )
         res = json.loads(await tab.evaluate(js, await_promise=True, return_by_value=True))
         good = sum(1 for s, nd, ch in res if s == 200 and nd)
-        record("batch20-pagefetch", good == len(sample), None,
+        record("batch40-pagefetch", good == len(sample), None,
                f"{good}/{len(sample)} ok in {time.time() - start:.1f}s statuses={sorted(set(r[0] for r in res))}")
+
+        # Next.js data route: same store record as JSON, much smaller than the page.
+        m = NEXT_DATA_RE.search(html)
+        build_id = json.loads(m.group(1)).get("buildId") if m else None
+        page = json.loads(m.group(1)).get("page") if m else None
+        log(f"next buildId={build_id} page={page}")
+        if build_id:
+            data_url = f"https://www.bunnings.com.au/_next/data/{build_id}/stores/nsw/alexandria.json"
+            st, body = await page_fetch(tab, data_url)
+            record("nextdata-pagefetch", st == 200 and '"store"' in body, body,
+                   f"HTTP {st} {data_url}")
 
         st_html = None
         tab2 = await browser.get(STORE2)
@@ -389,7 +464,7 @@ async def nd_main(variant):
             from curl_cffi import requests
             for imp in ("chrome", "chrome131"):
                 r = requests.get(STORE, impersonate=imp, cookies=jar,
-                                 headers={"User-Agent": ua}, timeout=30)
+                                 headers={"User-Agent": ua}, timeout=30, proxy=PROXY)
                 record(f"cookie-replay-{imp}", store_ok(r.text), r.text, f"HTTP {r.status_code}")
         except Exception as e:
             record("cookie-replay", False, note=f"error {e!r}"[:200])
@@ -427,7 +502,7 @@ async def nd_main(variant):
             ):
                 try:
                     from curl_cffi import requests
-                    r = requests.get(url, headers=hdrs, impersonate="chrome", timeout=30)
+                    r = requests.get(url, headers=hdrs, impersonate="chrome", timeout=30, proxy=PROXY)
                     record(f"api-replay-{url.split('/v1/')[-1][:40]}", r.status_code == 200, r.text,
                            f"HTTP {r.status_code}")
                 except Exception as e:
@@ -562,6 +637,7 @@ METHODS = {
     "cloudscraper": m_cloudscraper,
     "wayback": m_wayback,
     "flaresolverr": m_flaresolverr,
+    "flaresolverr_session": m_flaresolverr_session,
     "nodriver": m_nodriver,
     "seleniumbase": m_seleniumbase,
     "camoufox": m_camoufox,
