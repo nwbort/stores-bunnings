@@ -1,0 +1,73 @@
+name: Cloudflare experiments
+
+on:
+  push:
+    paths:
+    - experiments/**
+    - .github/workflows/cf-experiments.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - name: curl
+          install: ""
+          run: |
+            for url in https://www.bunnings.com.au/stores.xml https://www.bunnings.com.au/stores/wa/midland; do
+              curl -sS -o /dev/null -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+                -w "$url %{http_code} %{size_download} cf-mitigated=%header{cf-mitigated}\n" "$url"
+            done
+            curl -sS https://ipinfo.io/json || true
+        - name: curl_cffi
+          install: pip install curl_cffi
+          run: python experiments/probe.py curl_cffi
+        - name: cloudscraper
+          install: pip install cloudscraper
+          run: python experiments/probe.py cloudscraper
+        - name: wayback
+          install: ""
+          run: python experiments/probe.py wayback
+        - name: flaresolverr
+          install: docker run -d --name flaresolverr -p 8191:8191 -e LOG_LEVEL=info ghcr.io/flaresolverr/flaresolverr:latest
+          run: python experiments/probe.py flaresolverr; docker logs flaresolverr 2>&1 | tail -40
+        - name: nodriver-headful
+          install: pip install nodriver curl_cffi opencv-python-headless
+          run: xvfb-run -a -s "-screen 0 1920x1080x24" python experiments/probe.py nodriver headful
+        - name: nodriver-headless
+          install: pip install nodriver curl_cffi opencv-python-headless
+          run: python experiments/probe.py nodriver headless
+        - name: seleniumbase
+          install: pip install seleniumbase
+          run: python experiments/probe.py seleniumbase
+        - name: camoufox
+          install: pip install 'camoufox[geoip]' && python -m camoufox fetch
+          run: python experiments/probe.py camoufox
+        - name: patchright-headful
+          install: pip install patchright
+          run: xvfb-run -a -s "-screen 0 1920x1080x24" python experiments/probe.py patchright headful
+    name: ${{ matrix.name }}
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.13"
+    - name: Install
+      if: ${{ matrix.install != '' }}
+      run: ${{ matrix.install }}
+    - name: Probe
+      run: ${{ matrix.run }}
+    - name: Upload output
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: probe-${{ matrix.name }}
+        path: probe-out/
+        if-no-files-found: ignore
