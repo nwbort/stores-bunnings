@@ -10,10 +10,11 @@ to clear, then fetch the stores.xml sitemap and every store page with the
 page's own fetch(), so each request carries the browser's Cloudflare
 clearance.
 
-Writes the sitemap to SITEMAP_FILE and the store list (JSON) to stdout, like
-extract_stores.py, whose parsing it reuses.
+Writes the sitemap to SITEMAP_FILE and the store list (JSON) to OUTPUT, or
+stdout, like extract_stores.py, whose parsing it reuses. (Use -o under
+xvfb-run, which mixes the command's stderr into its stdout.)
 
-Usage: scrape.py [-v] [-w WORKERS]
+Usage: scrape.py [-v] [-w WORKERS] [-o OUTPUT]
 """
 
 import argparse
@@ -340,6 +341,8 @@ def main():
     parser.add_argument("--min-success-rate", type=float, default=DEFAULT_MIN_SUCCESS_RATE,
                         help="Exit non-zero if the fraction of stores extracted falls below this "
                              f"(default: {DEFAULT_MIN_SUCCESS_RATE})")
+    parser.add_argument("-o", "--output", metavar="FILE",
+                        help="Write the store list here instead of stdout")
     args = parser.parse_args()
     verbose = args.verbose
 
@@ -357,7 +360,13 @@ def main():
             f"below the {args.min_success_rate:.1%} threshold.")
         sys.exit(1)
 
-    print(json.dumps(sorted(stores.values(), key=lambda s: s.get("storeCode") or ""), indent=2))
+    output = json.dumps(sorted(stores.values(), key=lambda s: s.get("storeCode") or ""), indent=2)
+    if args.output:
+        with open(args.output + ".tmp", "w", encoding="utf-8") as f:
+            f.write(output + "\n")
+        os.replace(args.output + ".tmp", args.output)
+    else:
+        print(output)
 
 
 if __name__ == "__main__":

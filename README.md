@@ -39,7 +39,7 @@ the browser doesn't depend on Cloudflare continuing to allow that.
 ## Running locally
 
     pip install -r requirements.txt
-    ./scrape.sh                      # or: python scrape.py -v > stores.json
+    ./scrape.sh                      # or: python scrape.py -v -o stores.json
 
 To test the parser against a saved store page:
 

@@ -8,6 +8,6 @@ set -e
 # gives Chrome a display so it runs headful, which is far less likely to be
 # flagged than headless (headless never got through in testing).
 #
-# Writes bunnings.com.au-stores.xml.xml (the sitemap) and stores.json.
-xvfb-run -a -s "-screen 0 1920x1080x24" python scrape.py > stores.json.tmp
-mv stores.json.tmp stores.json
+# Writes bunnings.com.au-stores.xml.xml (the sitemap) and stores.json. xvfb-run
+# mixes stderr into stdout, so the JSON goes straight to a file.
+xvfb-run -a -s "-screen 0 1920x1080x24" python scrape.py -o stores.json
