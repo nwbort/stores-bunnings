@@ -1,0 +1,36 @@
+name: Scrape
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+  - cron: '23 9 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Run the scraper
+      run: |
+        ./scrape.sh
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.13"
+    - name: Extract store details
+      run: |
+        python extract_stores.py > stores.json.tmp
+        mv stores.json.tmp stores.json
+    - name: Commit and push
+      run: |-
+        git config user.name "Automated"
+        git config user.email "actions@users.noreply.github.com"
+        git add -A
+        timestamp=$(date -u)
+        git commit -m "${timestamp}" || exit 0
+        git pull --rebase
+        git push
