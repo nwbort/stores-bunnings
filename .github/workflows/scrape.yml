@@ -13,18 +13,29 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
-    - name: Run the scraper
+    # The runner's disk is slow the first time a file is read, which can make
+    # Chrome take ~10s to start. Read Chrome (and the libraries it loads) in
+    # the background now so that happens while checkout and pip install run.
+    - name: Warm up Chrome
       run: |
-        ./scrape.sh
+        nohup sh -c '
+          find /opt/google/chrome -type f -exec cat {} + >/dev/null 2>&1
+          timeout 30 google-chrome --headless --disable-gpu --dump-dom about:blank >/dev/null 2>&1
+        ' >/dev/null 2>&1 &
+    - uses: actions/checkout@v7
     - name: Set up Python
       uses: actions/setup-python@v7
       with:
         python-version: "3.13"
-    - name: Extract store details
+    - name: Install dependencies
       run: |
-        python extract_stores.py > stores.json.tmp
-        mv stores.json.tmp stores.json
+        pip install -r requirements.txt
+        # Chrome and Xvfb are normally pre-installed on ubuntu-latest.
+        command -v xvfb-run >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y xvfb; }
+        google-chrome --version
+    - name: Run the scraper
+      run: |
+        ./scrape.sh
     - name: Commit and push
       run: |-
         git config user.name "Automated"

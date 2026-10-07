@@ -1,0 +1,3 @@
+nodriver>=0.38
+# Used by nodriver's verify_cf() to find the Turnstile checkbox on screen.
+opencv-python-headless
