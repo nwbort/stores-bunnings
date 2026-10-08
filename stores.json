@@ -4105,8 +4105,8 @@
       {
         "weekDay": "THURSDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "19:00"
+        "open": "06:30",
+        "close": "21:00"
       },
       {
         "weekDay": "FRIDAY",
@@ -4475,8 +4475,8 @@
       {
         "weekDay": "THURSDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "19:00"
+        "open": "06:30",
+        "close": "21:00"
       },
       {
         "weekDay": "FRIDAY",
