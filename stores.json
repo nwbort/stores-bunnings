@@ -11699,44 +11699,44 @@
       {
         "weekDay": "MONDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "21:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "TUESDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "21:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "WEDNESDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "21:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "THURSDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "21:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "FRIDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "21:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "SATURDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "19:00"
+        "open": null,
+        "close": null
       },
       {
         "weekDay": "SUNDAY",
         "closed": false,
-        "open": "07:00",
-        "close": "19:00"
+        "open": null,
+        "close": null
       }
     ],
     "storeServices": [
