@@ -11717,14 +11717,14 @@
       {
         "weekDay": "THURSDAY",
         "closed": false,
-        "open": null,
-        "close": null
+        "open": "06:30",
+        "close": "21:00"
       },
       {
         "weekDay": "FRIDAY",
         "closed": false,
-        "open": null,
-        "close": null
+        "open": "06:30",
+        "close": "21:00"
       },
       {
         "weekDay": "SATURDAY",
