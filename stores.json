@@ -11729,8 +11729,8 @@
       {
         "weekDay": "SATURDAY",
         "closed": false,
-        "open": null,
-        "close": null
+        "open": "07:00",
+        "close": "19:00"
       },
       {
         "weekDay": "SUNDAY",
