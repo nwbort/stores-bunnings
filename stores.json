@@ -4527,8 +4527,8 @@
       "we-will-deliver",
       "we-will-install"
     ],
-    "hasClickAndCollect": false,
-    "hasDelivery": false,
+    "hasClickAndCollect": true,
+    "hasDelivery": true,
     "hasDriveAndCollect": false,
     "isActiveLocation": true,
     "pricingRegion": "TASMetro",
